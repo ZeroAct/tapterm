@@ -623,6 +623,14 @@ function webProxyUrl(spec) {
   return `/proxy/http/${port}${normalizedPath}`;
 }
 
+function localSpecToUrl(spec) {
+  const port = Number(spec && spec.port);
+  if (!isValidPort(port)) return '';
+  const path = String(spec && spec.path ? spec.path : '/');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `http://127.0.0.1:${port}${normalizedPath}`;
+}
+
 function createWebPaneRuntime(paneId, web, title) {
   const frame = document.createElement('article');
   frame.className = 'pane';
@@ -679,9 +687,15 @@ function createWebPaneRuntime(paneId, web, title) {
   reload.className = 'mini-btn';
   reload.textContent = 'Reload';
 
+  const stream = document.createElement('button');
+  stream.type = 'button';
+  stream.className = 'mini-btn';
+  stream.textContent = 'Stream';
+
   row.appendChild(addr);
   row.appendChild(go);
   row.appendChild(reload);
+  row.appendChild(stream);
 
   function navigateFromAddr() {
     const spec = normalizeWebSpec(addr.value);
@@ -711,6 +725,22 @@ function createWebPaneRuntime(paneId, web, title) {
     e.preventDefault();
     setActivePane(paneId);
     iframe.src = iframe.src;
+  });
+
+  stream.addEventListener('click', (e) => {
+    e.preventDefault();
+    setActivePane(paneId);
+    // Some localhost apps break under proxying (absolute URLs, ws://localhost, etc).
+    // Provide a one-click escape hatch into the host-streamed browser mode.
+    const spec = normalizeWebSpec(addr.value);
+    const url = spec ? localSpecToUrl(spec) : normalizeAnyUrl(addr.value);
+    if (!url) {
+      setStatus('Stream: enter a valid http(s) URL or localhost port');
+      return;
+    }
+    addNewBrowserTab(url).catch((err) => {
+      setStatus(`Error: ${err && err.message ? err.message : String(err)}`);
+    });
   });
 
   addr.addEventListener('keydown', (e) => {
@@ -1923,29 +1953,9 @@ async function addNewTab() {
   saveWorkspaceSoon();
 }
 
-async function addNewWebTab(urlRaw) {
-  // If the user entered a localhost port/URL, prefer the sandboxed iframe proxy.
-  // This behaves like a real browser tab (better compatibility for local dev UIs).
-  const localSpec = normalizeWebSpec(urlRaw);
-  if (localSpec) {
-    const pane = createWebPane(localSpec);
-    const tab = {
-      id: uid('tab'),
-      title: `Web ${localSpec.port}`,
-      root: createLeafNode(pane.id),
-    };
-    state.tabs.push(tab);
-    state.activeTabId = tab.id;
-    state.activePaneId = pane.id;
-    renderAll();
-    setStatus(`Web tab created`);
-    saveWorkspaceSoon();
-    return;
-  }
-
+async function addNewBrowserTab(urlRaw) {
   const url = normalizeAnyUrl(urlRaw);
-  if (!url) throw new Error('Invalid URL. Use http(s)://, or a localhost port like 3000');
-
+  if (!url) throw new Error('Invalid URL. Use http(s)://');
   const rect = workspaceEl.getBoundingClientRect();
   const width = Math.trunc(Math.max(360, Math.min(1280, rect.width || 900)));
   const height = Math.trunc(Math.max(240, Math.min(900, rect.height || 600)));
@@ -1963,6 +1973,34 @@ async function addNewWebTab(urlRaw) {
   renderAll();
   setStatus(`Web tab created`);
   saveWorkspaceSoon();
+}
+
+async function addNewProxyWebTab(localSpec) {
+  const spec = localSpec && typeof localSpec === 'object' ? localSpec : null;
+  if (!spec || !isValidPort(Number(spec.port))) {
+    throw new Error('Web pane: enter a localhost URL (e.g. 3000 or http://127.0.0.1:3000/)');
+  }
+  const pane = createWebPane(spec);
+  const tab = {
+    id: uid('tab'),
+    title: `Web ${spec.port}`,
+    root: createLeafNode(pane.id),
+  };
+  state.tabs.push(tab);
+  state.activeTabId = tab.id;
+  state.activePaneId = pane.id;
+  renderAll();
+  setStatus(`Web tab created`);
+  saveWorkspaceSoon();
+}
+
+async function addNewWebTab(urlRaw) {
+  // Prefer the sandboxed iframe proxy for localhost port/URL inputs.
+  // This renders in the user's browser (native dropdowns etc), but some apps may
+  // still require the streamed browser mode. Proxy panes expose a "Stream" button.
+  const localSpec = normalizeWebSpec(urlRaw);
+  if (localSpec) return addNewProxyWebTab(localSpec);
+  return addNewBrowserTab(urlRaw);
 }
 
 async function splitActivePane(direction) {
