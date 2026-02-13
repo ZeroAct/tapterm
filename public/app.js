@@ -1924,11 +1924,27 @@ async function addNewTab() {
 }
 
 async function addNewWebTab(urlRaw) {
-  const url = normalizeAnyUrl(urlRaw);
-  if (!url) {
-    throw new Error('Invalid URL. Use http(s)://');
+  // If the user entered a localhost port/URL, prefer the sandboxed iframe proxy.
+  // This behaves like a real browser tab (better compatibility for local dev UIs).
+  const localSpec = normalizeWebSpec(urlRaw);
+  if (localSpec) {
+    const pane = createWebPane(localSpec);
+    const tab = {
+      id: uid('tab'),
+      title: `Web ${localSpec.port}`,
+      root: createLeafNode(pane.id),
+    };
+    state.tabs.push(tab);
+    state.activeTabId = tab.id;
+    state.activePaneId = pane.id;
+    renderAll();
+    setStatus(`Web tab created`);
+    saveWorkspaceSoon();
     return;
   }
+
+  const url = normalizeAnyUrl(urlRaw);
+  if (!url) throw new Error('Invalid URL. Use http(s)://, or a localhost port like 3000');
 
   const rect = workspaceEl.getBoundingClientRect();
   const width = Math.trunc(Math.max(360, Math.min(1280, rect.width || 900)));
