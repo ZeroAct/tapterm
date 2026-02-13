@@ -16,3 +16,6 @@ test-results/
 # Local temp
 tmp/
 .env
+
+# Local deployment/unit config (never commit real passwords)
+deploy/term-web-terminal.service
