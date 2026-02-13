@@ -743,6 +743,13 @@ function disconnectPaneRuntime(runtime) {
     runtime.socket.close();
     runtime.socket = null;
   }
+  if (runtime.ws) {
+    runtime.ws.onclose = null;
+    runtime.ws.onerror = null;
+    runtime.ws.onmessage = null;
+    runtime.ws.close();
+    runtime.ws = null;
+  }
 }
 
 function disposePaneRuntime(paneId) {
@@ -1498,7 +1505,9 @@ function startSplitDrag(splitNode, splitWrap, firstEl, secondEl, captureEl, poin
     }
     applyRatio();
     requestAnimationFrame(() => {
-      for (const runtime of state.runtimes.values()) runtime.fit.fit();
+      for (const runtime of state.runtimes.values()) {
+        if (runtime.fit && typeof runtime.fit.fit === 'function') runtime.fit.fit();
+      }
     });
   }
 
@@ -1605,9 +1614,11 @@ function renderWorkspace() {
   refreshPaneActiveStyles();
 
   requestAnimationFrame(() => {
-    for (const runtime of state.runtimes.values()) runtime.fit.fit();
+    for (const runtime of state.runtimes.values()) {
+      if (runtime.fit && typeof runtime.fit.fit === 'function') runtime.fit.fit();
+    }
     const active = state.runtimes.get(state.activePaneId);
-    if (active) active.term.focus();
+    if (active && active.term) active.term.focus();
   });
 }
 
@@ -1714,7 +1725,7 @@ function handleFocusShortcut(event) {
   }
   if (k === 'x') {
     consume();
-    exitActiveTerminal().catch(() => {});
+    closeActivePane().catch(() => {});
     return true;
   }
 
@@ -1983,6 +1994,40 @@ async function exitActiveTerminal() {
   saveWorkspaceSoon();
 }
 
+async function closeActivePane() {
+  const pane = state.panes.get(state.activePaneId);
+  const tab = getActiveTab();
+  if (!pane || !tab) return;
+
+  if (pane.type === 'terminal') {
+    await exitActiveTerminal();
+    return;
+  }
+
+  const paneId = pane.id;
+  tab.root = removePaneFromNode(tab.root, paneId);
+  disposePaneRuntime(paneId);
+
+  if (!tab.root) {
+    state.tabs = state.tabs.filter((t) => t.id !== tab.id);
+    if (state.tabs.length > 0) {
+      state.activeTabId = state.tabs[0].id;
+      state.activePaneId = firstPaneId(state.tabs[0].root);
+    } else {
+      state.activeTabId = '';
+      state.activePaneId = '';
+      await addNewTab();
+      return;
+    }
+  } else {
+    state.activePaneId = firstPaneId(tab.root);
+  }
+
+  renderAll();
+  setStatus('Pane closed');
+  saveWorkspaceSoon();
+}
+
 async function refreshRunningTerminals() {
   const list = await getJson('/api/terminals');
   const openIds = new Set([...state.panes.values()].map((p) => p.terminalId));
@@ -2062,7 +2107,7 @@ splitHEl.addEventListener('click', async () => {
 
 exitTerminalEl.addEventListener('click', async () => {
   try {
-    await exitActiveTerminal();
+    await closeActivePane();
   } catch (error) {
     setStatus(`Error: ${error.message}`);
   }
@@ -2091,7 +2136,9 @@ logoutEl.addEventListener('click', async () => {
 });
 
 window.addEventListener('resize', () => {
-  for (const runtime of state.runtimes.values()) runtime.fit.fit();
+  for (const runtime of state.runtimes.values()) {
+    if (runtime.fit && typeof runtime.fit.fit === 'function') runtime.fit.fit();
+  }
 });
 
 window.addEventListener('keydown', (event) => {
