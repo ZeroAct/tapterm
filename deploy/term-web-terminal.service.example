@@ -11,7 +11,8 @@ Environment=PATH=/home/zero/.nvm/versions/node/v24.12.0/bin:/usr/local/sbin:/usr
 Environment=HOST=127.0.0.1
 Environment=PORT=8049
 Environment=WORKDIR=/home/zero/ws/zero_world
-Environment=AUTH_PASSWORD=term-server-zero-1234
+# REQUIRED: set a unique strong password before installing the unit.
+Environment=AUTH_PASSWORD=CHANGE_ME_TO_A_LONG_RANDOM_PASSWORD
 Environment=SESSION_TTL_MS=43200000
 ExecStart=/usr/bin/env node /home/zero/ws/zero_world/server.js
 Restart=always
@@ -19,3 +20,4 @@ RestartSec=2
 
 [Install]
 WantedBy=multi-user.target
+

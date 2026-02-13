@@ -62,19 +62,32 @@ Useful optional env vars:
 
 ## systemd service
 
-1. Edit password in `deploy/term-web-terminal.service`:
+1. Copy the example unit:
+
+```bash
+cp deploy/term-web-terminal.service.example deploy/term-web-terminal.service
+```
+
+2. Edit `deploy/term-web-terminal.service` and set a new strong password:
 
 ```ini
 Environment=AUTH_PASSWORD=YOUR_STRONG_PASSWORD
 ```
 
-2. Install and start:
+3. Install and start:
 
 ```bash
 sudo cp deploy/term-web-terminal.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now term-web-terminal.service
 sudo systemctl status term-web-terminal.service
+```
+
+4. If you previously installed the unit with an old password, update the unit file in `/etc/systemd/system/term-web-terminal.service` (or recopy it) and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart term-web-terminal.service
 ```
 
 ## Nginx proxy (HTTPS)
