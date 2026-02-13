@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Secure Web Terminal</title>
+  <link rel="stylesheet" href="/vendor/xterm.css" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="auth-overlay" class="auth-overlay">
+    <form id="login-form" class="auth-card">
+      <h1>Secure Web Terminal</h1>
+      <p>Authentication required</p>
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
+      <button id="login-btn" type="submit">Sign In</button>
+      <div id="auth-error" class="auth-error"></div>
+    </form>
+  </div>
+
+  <div id="web-overlay" class="auth-overlay hidden">
+    <form id="web-form" class="auth-card">
+      <h1>Open Web</h1>
+      <p>Runs on the host via Chromium streaming</p>
+      <input id="web-url" type="text" placeholder="https://google.com/" autocomplete="off" required />
+      <div class="web-actions">
+        <button id="web-open" type="submit">Open</button>
+        <button id="web-cancel" type="button" class="secondary">Cancel</button>
+      </div>
+      <div id="web-error" class="auth-error"></div>
+    </form>
+  </div>
+
+  <main class="layout">
+    <header class="topbar">
+      <div>
+        <h1>Web Terminal</h1>
+        <p id="meta">Disconnected</p>
+      </div>
+      <div class="actions">
+        <button id="new-tab" type="button" class="secondary">New Tab</button>
+        <button id="new-web" type="button" class="secondary">New Web</button>
+        <button id="split-v" type="button" class="secondary">Split V</button>
+        <button id="split-h" type="button" class="secondary">Split H</button>
+        <button id="exit-terminal" type="button" class="secondary danger">Exit</button>
+        <button id="refresh" type="button" class="secondary">Refresh</button>
+        <button id="logout" type="button" class="secondary">Log Out</button>
+      </div>
+    </header>
+
+    <section class="usage-info" aria-label="Usage help">
+      Ctrl+Alt+Arrow: focus pane, Ctrl+Alt+1..9: switch tab, Ctrl+Alt+V: split vertical, Ctrl+Alt+H: split horizontal, Ctrl+Alt+X: exit active pane.
+    </section>
+
+    <nav id="tabbar" class="tabbar" aria-label="Terminal tabs"></nav>
+
+    <section id="workspace" class="workspace" aria-label="Terminal workspace"></section>
+
+    <footer class="statusbar">
+      <span id="status">Locked</span>
+      <span class="hint">Shortcuts are browser-side and do not type into the terminal.</span>
+    </footer>
+  </main>
+
+  <script src="/vendor/xterm.js" defer></script>
+  <script src="/vendor/addon-fit.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,479 @@
+:root {
+  --bg: #090b10;
+  --panel: #141823;
+  --line: #2b3145;
+  --text: #e8edf7;
+  --muted: #9ca8c6;
+  --accent: #87d95c;
+  --danger: #de6b6b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  height: 100dvh;
+  overflow: hidden;
+  color: var(--text);
+  font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  background:
+    radial-gradient(1200px 500px at 85% -10%, #2a354f55 0%, transparent 65%),
+    radial-gradient(900px 380px at 10% 110%, #1b2b4c55 0%, transparent 68%),
+    var(--bg);
+}
+
+.dragging-split,
+.dragging-split * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.layout {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
+  height: 100dvh;
+  min-height: 0;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.topbar p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tabbar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  background: color-mix(in srgb, #12192b 85%, transparent);
+}
+
+.usage-info {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: #b8c4e2;
+  background: linear-gradient(90deg, #1a243b, #182036);
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.tab-btn {
+  border: 1px solid #35405d;
+  border-radius: 8px;
+  background: #202a44;
+  color: var(--text);
+  padding: 8px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab-btn.active {
+  border-color: #79b3ff;
+  background: #273b66;
+}
+
+.workspace {
+  min-height: 0;
+  min-width: 0;
+  padding: 10px;
+  display: flex;
+}
+
+.split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.split.row {
+  flex-direction: row;
+}
+
+.split.column {
+  flex-direction: column;
+}
+
+.split-child {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.splitter {
+  background: #29324a;
+  opacity: 0.8;
+  flex: 0 0 auto;
+  /* Ensure touch drag goes to pointer events instead of scrolling the page. */
+  touch-action: none;
+}
+
+.splitter:hover {
+  opacity: 1;
+  background: #4d638f;
+}
+
+.splitter.row {
+  width: 8px;
+  cursor: col-resize;
+}
+
+.splitter.column {
+  height: 8px;
+  cursor: row-resize;
+}
+
+.pane {
+  border: 1px solid #31384f;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0f111a;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+}
+
+.pane.active {
+  border-color: #81b7ff;
+  box-shadow: 0 0 0 1px #81b7ff55;
+}
+
+.pane-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid #2f3953;
+  background: #171d2c;
+  padding: 6px 9px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.pane-term {
+  min-width: 0;
+  min-height: 0;
+  /* Allow natural touch scrolling inside the terminal viewport. */
+  touch-action: pan-x pan-y;
+}
+
+.pane-term .xterm {
+  height: 100%;
+  width: 100%;
+  padding: 9px;
+}
+
+.pane-term .xterm .xterm-viewport {
+  -webkit-overflow-scrolling: touch;
+}
+
+.pane-web {
+  min-width: 0;
+  min-height: 0;
+  background: #0f111a;
+  /* We implement our own touch->wheel/click forwarding for the streamed browser. */
+  touch-action: none;
+}
+
+.pane-web iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0f111a;
+}
+
+.kbd-capture {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pane-actions {
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid #2f3953;
+  background: #12192b;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+}
+
+.shortcut-row .addr {
+  flex: 1 1 auto;
+  min-width: 180px;
+  border: 1px solid #2f3953;
+  border-radius: 10px;
+  background: #0d1220;
+  color: var(--text);
+  font: inherit;
+  padding: 10px;
+  height: 40px;
+}
+
+.shortcut-row .mini-btn {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #2b334b;
+  border-color: #3a4665;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.shortcut-row .mini-btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #102002;
+}
+
+.shortcut-row.dragging {
+  touch-action: none;
+}
+
+.shortcut-btn {
+  flex: 0 0 auto;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: #26304a;
+  border-color: #3a4665;
+  color: var(--text);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  /* Allow horizontal scroll on the bar; we disable default actions only while dragging. */
+  touch-action: manipulation;
+}
+
+.shortcut-btn:active {
+  transform: translateY(1px);
+}
+
+.shortcut-btn.dragging {
+  opacity: 0.85;
+  filter: saturate(1.1);
+  background: #2b3a62;
+  border-color: #6e8ed0;
+  box-shadow: 0 6px 18px #00000055;
+}
+
+.paste-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.paste-row.hidden {
+  display: none;
+}
+
+.paste-row textarea {
+  width: 100%;
+  resize: none;
+  height: 42px;
+  border: 1px solid #2f3953;
+  border-radius: 10px;
+  background: #0d1220;
+  color: var(--text);
+  font: inherit;
+  padding: 10px;
+  line-height: 1.2;
+}
+
+.paste-row .mini-btn {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #2b334b;
+  border-color: #3a4665;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.paste-row .mini-btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #102002;
+}
+
+.statusbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.hint {
+  text-align: right;
+}
+
+button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 11px;
+  cursor: pointer;
+  background: var(--accent);
+  color: #102002;
+  font-weight: 700;
+  font: inherit;
+}
+
+button.secondary {
+  background: #2b334b;
+  color: var(--text);
+}
+
+button.danger {
+  background: #4b2b30;
+  border-color: #7b3c47;
+  color: #ffd9de;
+}
+
+button:disabled,
+input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 7, 14, 0.78);
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+.auth-overlay.hidden {
+  display: none;
+}
+
+.auth-card {
+  width: min(90vw, 360px);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.auth-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+.auth-card input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0d1220;
+  color: var(--text);
+  font: inherit;
+  padding: 10px;
+}
+
+.auth-error {
+  min-height: 1.2rem;
+  color: #ff9da0;
+  font-size: 0.87rem;
+}
+
+.web-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 980px) {
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .statusbar {
+    flex-direction: column;
+  }
+
+  .hint {
+    text-align: left;
+  }
+
+  /* Bigger touch targets for split dragging. */
+  .splitter.row {
+    width: 16px;
+  }
+
+  .splitter.column {
+    height: 16px;
+  }
+
+  .pane-actions {
+    padding: 10px 8px;
+    gap: 10px;
+  }
+
+  .shortcut-btn {
+    padding: 10px 12px;
+  }
+
+  .paste-row {
+    grid-template-columns: 1fr;
+  }
+}

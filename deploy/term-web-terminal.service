@@ -1,0 +1,21 @@
+[Unit]
+Description=Term Web Terminal Service
+After=network.target
+
+[Service]
+Type=simple
+User=zero
+WorkingDirectory=/home/zero/ws/zero_world
+Environment=NODE_ENV=production
+Environment=PATH=/home/zero/.nvm/versions/node/v24.12.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=HOST=127.0.0.1
+Environment=PORT=8049
+Environment=WORKDIR=/home/zero/ws/zero_world
+Environment=AUTH_PASSWORD=term-server-zero-1234
+Environment=SESSION_TTL_MS=43200000
+ExecStart=/usr/bin/env node /home/zero/ws/zero_world/server.js
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

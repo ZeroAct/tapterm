@@ -1,0 +1,18 @@
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Playwright
+playwright-report/
+test-results/
+
+# Local temp
+tmp/
+.env
