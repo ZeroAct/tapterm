@@ -58,6 +58,120 @@ const SHORTCUTS = [
 
 const SHORTCUTS_BY_KEY = new Map(SHORTCUTS.map((s) => [s.key, s]));
 
+const AUTOCOMPLETE_WORDS_KEY = 'tapterm_autocomplete_words_v1';
+const AUTOCOMPLETE_MAX_WORDS = 2000;
+const AUTOCOMPLETE_MIN_PREFIX = 2;
+const AUTOCOMPLETE_MAX_SUGGESTIONS = 7;
+const AUTOCOMPLETE_WORD_RE = /[A-Za-z0-9_./:-]/;
+
+function loadAutocompleteWords() {
+  try {
+    const raw = localStorage.getItem(AUTOCOMPLETE_WORDS_KEY);
+    if (!raw) return new Map();
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return new Map();
+    const out = new Map();
+    for (const [k, v] of Object.entries(parsed)) {
+      const w = String(k || '').trim();
+      const n = Number(v);
+      if (!w) continue;
+      if (!Number.isFinite(n) || n <= 0) continue;
+      out.set(w, Math.trunc(n));
+    }
+    return out;
+  } catch {
+    return new Map();
+  }
+}
+
+function saveAutocompleteWords(map) {
+  try {
+    const obj = {};
+    for (const [k, v] of map.entries()) obj[k] = v;
+    localStorage.setItem(AUTOCOMPLETE_WORDS_KEY, JSON.stringify(obj));
+  } catch {
+    // ignore
+  }
+}
+
+function normalizeWord(raw) {
+  const w = String(raw || '').trim();
+  if (!w) return '';
+  // Keep it conservative: avoid capturing huge blobs (paths/urls are allowed).
+  if (w.length > 64) return '';
+  return w;
+}
+
+let AUTOCOMPLETE_WORDS = loadAutocompleteWords();
+let autocompleteSaveTimer = null;
+
+function bumpWord(word, delta = 1) {
+  const w = normalizeWord(word);
+  if (!w) return;
+  const prev = AUTOCOMPLETE_WORDS.get(w) || 0;
+  AUTOCOMPLETE_WORDS.set(w, Math.min(1_000_000, prev + Math.max(1, Math.trunc(delta))));
+
+  // Prune if needed: keep the most common words.
+  if (AUTOCOMPLETE_WORDS.size > AUTOCOMPLETE_MAX_WORDS) {
+    const sorted = [...AUTOCOMPLETE_WORDS.entries()].sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]));
+    AUTOCOMPLETE_WORDS = new Map(sorted.slice(0, AUTOCOMPLETE_MAX_WORDS));
+  }
+
+  if (autocompleteSaveTimer) clearTimeout(autocompleteSaveTimer);
+  autocompleteSaveTimer = setTimeout(() => {
+    autocompleteSaveTimer = null;
+    saveAutocompleteWords(AUTOCOMPLETE_WORDS);
+  }, 800);
+}
+
+function getSuggestions(prefix) {
+  const p = String(prefix || '');
+  if (!p || p.length < AUTOCOMPLETE_MIN_PREFIX) return [];
+  const lower = p.toLowerCase();
+  const results = [];
+  for (const [w, c] of AUTOCOMPLETE_WORDS.entries()) {
+    if (w.length <= p.length) continue;
+    if (w.toLowerCase().startsWith(lower)) results.push({ w, c });
+  }
+  results.sort((a, b) => (b.c - a.c) || a.w.localeCompare(b.w));
+  return results.slice(0, AUTOCOMPLETE_MAX_SUGGESTIONS);
+}
+
+function isWordChar(ch) {
+  return !!ch && AUTOCOMPLETE_WORD_RE.test(ch);
+}
+
+function getTextUpToCursor(term) {
+  try {
+    const buf = term && term.buffer && term.buffer.active ? term.buffer.active : null;
+    if (!buf) return '';
+    const y = Number(buf.cursorY);
+    const x = Number(buf.cursorX);
+    const line = buf.getLine ? buf.getLine(y) : null;
+    if (!line || typeof line.translateToString !== 'function') return '';
+    if (Number.isFinite(x) && x >= 0) {
+      try {
+        return line.translateToString(false, 0, x);
+      } catch {
+        // Older xterm builds may have different signature.
+        const full = line.translateToString(false);
+        return full.slice(0, x);
+      }
+    }
+    return line.translateToString(false);
+  } catch {
+    return '';
+  }
+}
+
+function extractPrefixFromLineText(text) {
+  const t = String(text || '');
+  let i = t.length - 1;
+  while (i >= 0 && isWordChar(t[i])) i -= 1;
+  const prefix = t.slice(i + 1);
+  return prefix;
+}
+
 function loadShortcutOrder() {
   try {
     const raw = localStorage.getItem(SHORTCUT_ORDER_KEY);
@@ -288,6 +402,10 @@ function createPaneRuntime(paneId, terminalId, title) {
   term.open(termMount);
   fit.fit();
 
+  const acMenu = document.createElement('div');
+  acMenu.className = 'ac-menu hidden';
+  termMount.appendChild(acMenu);
+
   // Mobile: xterm can consume/stop bubbling pointer events, so rely on capture-phase
   // handlers on the mount to reliably activate/focus. Also avoid stealing scroll gestures:
   // focus only on "tap" for touch pointers.
@@ -341,7 +459,141 @@ function createPaneRuntime(paneId, terminalId, title) {
     pasteRow,
     pasteTa,
     suppressShortcutClickUntil: 0,
+    acMenu,
+    acOpen: false,
+    acItems: [],
+    acIndex: 0,
+    acPrefix: '',
+    acCapture: '',
   };
+
+  function hideAutocomplete() {
+    runtime.acOpen = false;
+    runtime.acItems = [];
+    runtime.acIndex = 0;
+    runtime.acPrefix = '';
+    runtime.acMenu.innerHTML = '';
+    runtime.acMenu.classList.add('hidden');
+  }
+
+  function positionAutocompleteUnderCursor() {
+    if (!runtime.acOpen) return;
+    const host = term && term.element ? term.element : null;
+    if (!host) return;
+
+    let padLeft = 0;
+    let padTop = 0;
+    try {
+      const cs = window.getComputedStyle(host);
+      padLeft = Number.parseFloat(cs.paddingLeft) || 0;
+      padTop = Number.parseFloat(cs.paddingTop) || 0;
+    } catch {
+      // ignore
+    }
+
+    let cellW = 9;
+    let cellH = 18;
+    try {
+      const dims = term && term._core && term._core._renderService && term._core._renderService.dimensions
+        ? term._core._renderService.dimensions
+        : null;
+      const css = dims && dims.css ? dims.css : null;
+      if (css && Number.isFinite(css.cell.width)) cellW = css.cell.width;
+      if (css && Number.isFinite(css.cell.height)) cellH = css.cell.height;
+    } catch {
+      // ignore
+    }
+
+    const buf = term && term.buffer && term.buffer.active ? term.buffer.active : null;
+    const x = buf ? Number(buf.cursorX) : 0;
+    const y = buf ? Number(buf.cursorY) : 0;
+
+    // Under the current line: y+1.
+    const left = padLeft + Math.max(0, x) * cellW;
+    const top = padTop + Math.max(0, y + 1) * cellH + 2;
+
+    runtime.acMenu.style.left = `${Math.max(6, Math.min(termMount.clientWidth - 6, left))}px`;
+    runtime.acMenu.style.top = `${Math.max(6, Math.min(termMount.clientHeight - 6, top))}px`;
+  }
+
+  function renderAutocomplete(items, prefix) {
+    runtime.acItems = items;
+    runtime.acPrefix = String(prefix || '');
+    runtime.acIndex = 0;
+    runtime.acMenu.innerHTML = '';
+
+    if (!items || items.length === 0) {
+      hideAutocomplete();
+      return;
+    }
+
+    for (let i = 0; i < items.length; i += 1) {
+      const it = items[i];
+      const row = document.createElement('div');
+      row.className = `ac-item${i === runtime.acIndex ? ' active' : ''}`;
+
+      const w = document.createElement('span');
+      w.className = 'w';
+      w.textContent = it.w;
+
+      const c = document.createElement('span');
+      c.className = 'c';
+      c.textContent = String(it.c);
+
+      row.appendChild(w);
+      row.appendChild(c);
+      runtime.acMenu.appendChild(row);
+    }
+
+    runtime.acOpen = true;
+    runtime.acMenu.classList.remove('hidden');
+    positionAutocompleteUnderCursor();
+  }
+
+  function refreshAutocompleteFromCursor() {
+    if (!runtime || !runtime.term) return;
+    const prefix = extractPrefixFromLineText(getTextUpToCursor(runtime.term));
+    if (!prefix || prefix.length < AUTOCOMPLETE_MIN_PREFIX) {
+      hideAutocomplete();
+      return;
+    }
+    // If the user is typing a different prefix, reset selection.
+    const items = getSuggestions(prefix);
+    if (!items || items.length === 0) {
+      hideAutocomplete();
+      return;
+    }
+    renderAutocomplete(items, prefix);
+  }
+
+  function cycleAutocomplete(delta) {
+    if (!runtime.acOpen || runtime.acItems.length === 0) return;
+    const n = runtime.acItems.length;
+    runtime.acIndex = (runtime.acIndex + delta + n) % n;
+    const children = runtime.acMenu.querySelectorAll('.ac-item');
+    for (let i = 0; i < children.length; i += 1) {
+      children[i].classList.toggle('active', i === runtime.acIndex);
+    }
+    positionAutocompleteUnderCursor();
+  }
+
+  function acceptAutocomplete() {
+    if (!runtime.acOpen || runtime.acItems.length === 0) return false;
+    const sel = runtime.acItems[runtime.acIndex];
+    if (!sel || !sel.w) return false;
+    const prefix = String(runtime.acPrefix || '');
+    if (!prefix) return false;
+    if (!sel.w.toLowerCase().startsWith(prefix.toLowerCase())) return false;
+
+    const suffix = sel.w.slice(prefix.length);
+    if (suffix) {
+      sendInput(runtime, suffix);
+      runtime.acCapture = sel.w;
+    }
+    bumpWord(sel.w, 1);
+    hideAutocomplete();
+    return true;
+  }
 
   function showPasteRow(prefill = '') {
     pasteTa.value = String(prefill || '');
@@ -574,13 +826,74 @@ function createPaneRuntime(paneId, terminalId, title) {
   });
 
   term.onData((data) => {
+    // Best-effort: learn only from user input.
+    const s = String(data || '');
+    for (let i = 0; i < s.length; i += 1) {
+      const ch = s[i];
+      if (ch === '\x7f') {
+        // Backspace.
+        runtime.acCapture = runtime.acCapture.slice(0, -1);
+        continue;
+      }
+      if (ch === '\r' || ch === '\n' || ch === '\t' || ch === ' ') {
+        if (runtime.acCapture && runtime.acCapture.length >= 2) bumpWord(runtime.acCapture, 1);
+        runtime.acCapture = '';
+        continue;
+      }
+      if (!isWordChar(ch)) {
+        if (runtime.acCapture && runtime.acCapture.length >= 2) bumpWord(runtime.acCapture, 1);
+        runtime.acCapture = '';
+        continue;
+      }
+      runtime.acCapture += ch;
+      if (runtime.acCapture.length > 64) runtime.acCapture = runtime.acCapture.slice(-64);
+    }
+
     sendInput(runtime, data);
+    // Update suggestions after the terminal has had a chance to render the echoed char.
+    requestAnimationFrame(() => refreshAutocompleteFromCursor());
   });
 
   term.attachCustomKeyEventHandler((event) => {
     if (event.type !== 'keydown') return true;
     if (handleFocusShortcut(event)) return false;
+
+    // Autocomplete interactions (only when this pane is active).
+    if (state.activePaneId === paneId && runtime.acOpen) {
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        cycleAutocomplete(event.shiftKey ? -1 : 1);
+        return false;
+      }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (acceptAutocomplete()) return false;
+        return true;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        hideAutocomplete();
+        return false;
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        cycleAutocomplete(1);
+        return false;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        cycleAutocomplete(-1);
+        return false;
+      }
+    } else {
+      // If user hits Esc with no menu, just ensure it's closed.
+      if (event.key === 'Escape') hideAutocomplete();
+    }
     return true;
+  });
+
+  term.onRender(() => {
+    if (runtime.acOpen) positionAutocompleteUnderCursor();
   });
 
   connectPaneRuntime(runtime);

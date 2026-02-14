@@ -183,6 +183,7 @@ body {
   min-height: 0;
   /* Allow natural touch scrolling inside the terminal viewport. */
   touch-action: pan-x pan-y;
+  position: relative;
 }
 
 .pane-term .xterm {
@@ -193,6 +194,55 @@ body {
 
 .pane-term .xterm .xterm-viewport {
   -webkit-overflow-scrolling: touch;
+}
+
+.ac-menu {
+  position: absolute;
+  z-index: 50;
+  min-width: 220px;
+  max-width: min(520px, 92%);
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #3a4665;
+  border-radius: 10px;
+  background: #0d1220;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 6px;
+}
+
+.ac-menu.hidden {
+  display: none;
+}
+
+.ac-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ac-item .w {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-item .c {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ac-item.active {
+  background: #223158;
+  outline: 1px solid #79b3ff55;
 }
 
 .pane-web {
